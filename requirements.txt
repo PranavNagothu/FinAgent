@@ -21,3 +21,5 @@ fredapi
 jinja2
 matplotlib
 requests
+python-multipart
+langchain-openai
