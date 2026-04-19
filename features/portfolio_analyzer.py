@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any, Tuple
 """
 features/portfolio_analyzer.py — Personal Portfolio Document Analyzer
 Upload CSV/PDF brokerage statements, get AI-driven portfolio insights.
@@ -40,7 +41,7 @@ COLUMN_ALIASES = {
 }
 
 
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame | None:
+def _normalize_columns(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Try to map brokerage-specific columns to standard names."""
     col_lower = {c: str(c).lower().strip().replace(" ", "_").replace(".", "") for c in df.columns}
     df = df.rename(columns=col_lower)
@@ -106,7 +107,7 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame | None:
     return df
 
 
-def _find_header_and_normalize(df: pd.DataFrame) -> pd.DataFrame | None:
+def _find_header_and_normalize(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Find the actual table header (skipping metadata rows at top) and normalize."""
     import streamlit as st
     st.write("DEBUG: Raw DataFrame Head:", df.head())
@@ -139,7 +140,7 @@ def _find_header_and_normalize(df: pd.DataFrame) -> pd.DataFrame | None:
     return _normalize_columns(df)
 
 
-def _parse_csv(uploaded_file) -> pd.DataFrame | None:
+def _parse_csv(uploaded_file) -> Optional[pd.DataFrame]:
     """Parse uploaded CSV and normalize columns, skipping metadata at top."""
     try:
         content = uploaded_file.getvalue()
@@ -152,7 +153,7 @@ def _parse_csv(uploaded_file) -> pd.DataFrame | None:
         return None
 
 
-def _parse_excel(uploaded_file) -> pd.DataFrame | None:
+def _parse_excel(uploaded_file) -> Optional[pd.DataFrame]:
     """Parse uploaded Excel and normalize columns, skipping metadata at top."""
     try:
         content = uploaded_file.getvalue()
@@ -163,7 +164,7 @@ def _parse_excel(uploaded_file) -> pd.DataFrame | None:
     except Exception as e:
         logger.error(f"Excel parse error: {e}")
         return None
-def _parse_pdf(uploaded_file) -> pd.DataFrame | None:
+def _parse_pdf(uploaded_file) -> Optional[pd.DataFrame]:
     """Extract holdings from a PDF brokerage statement.
     
     Strategy:

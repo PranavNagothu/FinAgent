@@ -35,7 +35,7 @@ else:
 
 # --- FastAPI App & Alpha Vantage Client ---
 app = FastAPI(title="Aegis Alpha Vantage MCP Server")
-ts = TimeSeries(key=ALPHA_VANTAGE_API_KEY, output_format='json')
+ts = TimeSeries(key=ALPHA_VANTAGE_API_KEY, output_format='json') if ALPHA_VANTAGE_API_KEY else None
 
 @app.post("/market_data")
 async def get_market_data(payload: dict):
@@ -58,6 +58,8 @@ async def get_market_data(payload: dict):
     logger.info(f"Received market data request for symbol: {symbol}, time_range: {time_range}")
 
     try:
+        if not ts:
+            raise ValueError("No Alpha Vantage API key configured — using mock data.")
         # Route to appropriate API based on time range
         if time_range == "INTRADAY":
             # Intraday data (last 4-6 hours, 5-min intervals)
@@ -77,100 +79,9 @@ async def get_market_data(payload: dict):
         return {"status": "success", "data": data, "meta_data": meta_data}
 
     except Exception as e:
-        # Catch ALL exceptions to ensure fallback works
-        logger.error(f"Alpha Vantage API error for symbol {symbol}: {e}")
-        logger.warning(f"Triggering MOCK DATA fallback for {symbol} due to error.")
-        
-        import random
-        import math
-        from datetime import datetime, timedelta
-        
-        # Seed randomness with symbol AND date to ensure it changes daily
-        # But stays consistent within the same day
-        today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        seed_value = f"{symbol}_{today_str}"
-        random.seed(seed_value)
-        
-        mock_data = {}
-        current_time = datetime.now()
-        
-        # Generate unique base price
-        symbol_hash = sum(ord(c) for c in symbol)
-        base_price = float(symbol_hash % 500) + 50
-        
-        # Force distinct start prices for common stocks
-        if "AAPL" in symbol: base_price = 150.0
-        if "TSLA" in symbol: base_price = 250.0
-        if "NVDA" in symbol: base_price = 450.0
-        if "MSFT" in symbol: base_price = 350.0
-        if "GOOG" in symbol: base_price = 130.0
-        if "AMZN" in symbol: base_price = 140.0
-        
-        # Add some daily variation to base price
-        daily_noise = (hash(today_str) % 100) / 10.0  # -5 to +5 variation
-        base_price += daily_noise
-        
-        trend_direction = 1 if symbol_hash % 2 == 0 else -1
-        volatility = base_price * 0.02
-        trend_strength = base_price * 0.001
-        current_price = base_price
-        
-        # Determine number of data points based on time range
-        if time_range == "INTRADAY":
-            num_points = 100
-            time_delta = timedelta(minutes=5)
-        elif time_range in ["1D", "3D"]:
-            num_points = int(time_range[0]) if time_range != "1D" else 1
-            time_delta = timedelta(days=1)
-        elif time_range == "1W":
-            num_points = 7
-            time_delta = timedelta(days=1)
-        elif time_range == "1M":
-            num_points = 30
-            time_delta = timedelta(days=1)
-        elif time_range == "3M":
-            num_points = 90
-            time_delta = timedelta(days=1)
-        elif time_range == "1Y":
-            num_points = 365
-            time_delta = timedelta(days=1)
-        else:
-            num_points = 100
-            time_delta = timedelta(minutes=5)
-        
-        for i in range(num_points):
-            noise = random.uniform(-volatility, volatility)
-            cycle_1 = (base_price * 0.02) * math.sin(i / 8.0)
-            cycle_2 = (base_price * 0.01) * math.sin(i / 3.0)
-            change = noise + (trend_direction * trend_strength)
-            current_price += change
-            final_price = current_price + cycle_1 + cycle_2
-            final_price = max(1.0, final_price)
-            
-            t = current_time - (time_delta * (num_points - i - 1))
-            
-            # Format timestamp based on data type
-            if time_range == "INTRADAY":
-                timestamp_str = t.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                timestamp_str = t.strftime("%Y-%m-%d")
-            
-            mock_data[timestamp_str] = {
-                "1. open": str(round(final_price, 2)),
-                "2. high": str(round(final_price + (volatility * 0.3), 2)),
-                "3. low": str(round(final_price - (volatility * 0.3), 2)),
-                "4. close": str(round(final_price + random.uniform(-0.1, 0.1), 2)),
-                "5. volume": str(int(random.uniform(100000, 5000000)))
-            }
-        
-        return {
-            "status": "success", 
-            "data": mock_data, 
-            "meta_data": {
-                "Information": f"Mock Data ({time_range}) - API Limit/Error",
-                "Source": "Simulated (Fallback)"
-            }
-        }
+        logger.error(f"Alpha Vantage market data error for {symbol}: {e}")
+        raise HTTPException(status_code=502, detail=f"Alpha Vantage API error: {str(e)}")
+
 
 
 def filter_data_by_time_range(data: dict, time_range: str) -> dict:
@@ -276,61 +187,8 @@ async def get_company_overview(payload: dict):
 
     except Exception as e:
         logger.error(f"Company overview error for {symbol}: {e}")
-        logger.warning(f"Returning fallback overview for {symbol}")
-        # Simulate realistic fallback data when API limit is hit
-        base_mc = 10000000000  # 10B default
-        base_rev = 5000000000
-        base_eps = 2.50
-        base_pe = 15.0
-        
-        if "AAPL" in symbol:
-            base_mc, base_rev, base_eps, base_pe = 3000000000000, 380000000000, 6.42, 28.5
-            name, sector = "Apple Inc.", "Technology"
-        elif "MSFT" in symbol:
-            base_mc, base_rev, base_eps, base_pe = 3100000000000, 240000000000, 11.50, 35.2
-            name, sector = "Microsoft Corporation", "Technology"
-        elif "NVDA" in symbol:
-            base_mc, base_rev, base_eps, base_pe = 2200000000000, 60000000000, 12.30, 75.0
-            name, sector = "NVIDIA Corporation", "Technology"
-        elif "TSLA" in symbol:
-            base_mc, base_rev, base_eps, base_pe = 600000000000, 95000000000, 3.12, 45.0
-            name, sector = "Tesla Inc.", "Consumer Discretionary"
-        elif "AMZN" in symbol:
-            base_mc, base_rev, base_eps, base_pe = 1800000000000, 570000000000, 2.90, 60.0
-            name, sector = "Amazon.com Inc.", "Consumer Discretionary"
-        else:
-            name = symbol
-            sector = "General Market"
-            
-        import random
-        # Add tiny randomization to make it look alive
-        mc = base_mc * random.uniform(0.98, 1.02)
-        rev = base_rev * random.uniform(0.98, 1.02)
-        
-        return {
-            "status": "success",
-            "source": "Mocked (API limit reached)",
-            "data": {
-                "Name": name, "Symbol": symbol,
-                "Description": f"{name} is a major player in the {sector} sector. (Note: Data mocked due to Alpha Vantage API limits).",
-                "Sector": sector, "Industry": sector,
-                "MarketCapitalization": str(int(mc)), 
-                "PERatio": f"{base_pe:.1f}", 
-                "EPS": f"{base_eps:.2f}",
-                "RevenueTTM": str(int(rev)), 
-                "GrossProfitTTM": str(int(rev * 0.4)),
-                "ProfitMargin": "0.15",
-                "OperatingMarginTTM": "0.20", 
-                "ReturnOnEquityTTM": "0.25",
-                "DividendYield": "0.015", 
-                "Beta": "1.1",
-                "52WeekHigh": "150.0", 
-                "52WeekLow": "100.0",
-                "AnalystTargetPrice": "160.0",
-                "QuarterlyEarningsGrowthYOY": "0.10",
-                "QuarterlyRevenueGrowthYOY": "0.08",
-            }
-        }
+        raise HTTPException(status_code=502, detail=f"Alpha Vantage overview API error: {str(e)}")
+
 
 
 @app.post("/global_quote")
@@ -382,30 +240,8 @@ async def get_global_quote(payload: dict):
 
     except Exception as e:
         logger.error(f"Global quote error for {symbol}: {e}")
-        import random
-        base_price = 150.0
-        if "AAPL" in symbol: base_price = 175.50
-        elif "MSFT" in symbol: base_price = 410.20
-        elif "NVDA" in symbol: base_price = 880.00
-        elif "TSLA" in symbol: base_price = 175.00
-        
-        price = base_price * random.uniform(0.98, 1.02)
-        change = price * random.uniform(-0.02, 0.02)
-        
-        return {
-            "status": "success",
-            "source": "Mocked (API limit reached)",
-            "data": {
-                "symbol": symbol, 
-                "price": f"{price:.2f}", 
-                "open": f"{(price - change):.2f}",
-                "high": f"{(price * 1.01):.2f}",
-                "low": f"{(price * 0.99):.2f}",
-                "change": f"{change:.2f}",
-                "change_percent": f"{(change / base_price * 100):.2f}%", 
-                "volume": str(int(random.uniform(1000000, 50000000))),
-            }
-        }
+        raise HTTPException(status_code=502, detail=f"Alpha Vantage quote API error: {str(e)}")
+
 
 
 @app.get("/")

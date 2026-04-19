@@ -1,1 +1,1 @@
-# Sentinel Add-On Features Package
+# FinAgent Features Package

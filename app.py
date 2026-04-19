@@ -18,7 +18,7 @@ ALERTS_FILE = "alerts.json"
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="Sentinel - AI Financial Intelligence",
+    page_title="FinAgent - AI Financial Intelligence",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -47,10 +47,10 @@ start_background_services()
 def check_server_status():
     # All services are mounted as sub-apps under the gateway on port 8000
     urls = {
-        "Gateway": "http://127.0.0.1:8000/",
-        "Tavily": "http://127.0.0.1:8000/tavily/",
-        "Alpha Vantage": "http://127.0.0.1:8000/alphavantage/",
-        "Private DB": "http://127.0.0.1:8000/private/",
+        "Gateway": "http://127.0.0.1:8002/",
+        "Tavily": "http://127.0.0.1:8002/tavily/",
+        "Alpha Vantage": "http://127.0.0.1:8002/alphavantage/",
+        "Private DB": "http://127.0.0.1:8002/private/",
     }
     statuses = {}
     with httpx.Client(timeout=3.0) as client:
@@ -107,7 +107,7 @@ def render_sidebar():
             st.markdown(f"""
             <div style="text-align: center; margin-bottom: 2rem;">
                 <img src="data:image/png;base64,{logo_base64}" style="width: 80px; height: 80px; margin-bottom: 10px;">
-                <h2 style="margin:0; font-size: 1.5rem;">SENTINEL</h2>
+                <h2 style="margin:0; font-size: 1.5rem;">FINAGENT</h2>
                 <p style="color: var(--text-secondary); font-size: 0.8rem;">AI Financial Intelligence</p>
             </div>
             """, unsafe_allow_html=True)
@@ -223,11 +223,11 @@ def render_home():
         st.markdown(f"""
         <div class="hero-container">
             <div style="margin-bottom: 24px;">
-                <span class="theme-pill">🌟 SENTINEL V2.0 BETA</span>
+                <span class="theme-pill">🌟 FinAgent v2.0</span>
             </div>
             <div style="display: flex; align-items: center; justify-content: center; gap: 24px; margin-bottom: 1.5rem;">
                 <img src="data:image/png;base64,{logo_base64}" style="width: 85px; height: 85px; filter: drop-shadow(0 0 20px rgba(167, 139, 250, 0.4));">
-                <h1 class="hero-title" style="margin: 0;">Sentinel AI<br>Financial Intelligence</h1>
+                <h1 class="hero-title" style="margin: 0;">FinAgent<br>Financial Intelligence</h1>
             </div>
             <p class="hero-subtitle">
                 Transform raw market data into actionable business insights with the power of ultra-fast AI.
@@ -240,9 +240,9 @@ def render_home():
         st.markdown("""
         <div class="hero-container">
             <div style="margin-bottom: 24px;">
-                <span class="theme-pill">🌟 SENTINEL V2.0 BETA</span>
+                <span class="theme-pill">🌟 FinAgent v2.0</span>
             </div>
-            <h1 class="hero-title">Sentinel AI<br>Financial Intelligence</h1>
+            <h1 class="hero-title">FinAgent<br>Financial Intelligence</h1>
             <p class="hero-subtitle">
                 Transform raw market data into actionable business insights with the power of ultra-fast AI.
                 Analyze stocks, macro news, and private portfolios through autonomous agentic workflows.
@@ -347,7 +347,7 @@ def render_analysis():
             if not all_online:
                 st.error("SYSTEM HALTED: Core services offline. Check sidebar status.")
             else:
-                with st.status("🚀 SENTINEL ORCHESTRATOR ENGAGED...", expanded=True) as status:
+                with st.status("🚀 FINAGENT ORCHESTRATOR ENGAGED...", expanded=True) as status:
                     try:
                         from agents.orchestrator_v3 import get_orchestrator
                         # Use default provider or env var

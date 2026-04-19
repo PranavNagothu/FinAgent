@@ -2,7 +2,7 @@
 # This avoids binary file issues with Hugging Face Spaces
 
 def get_logo_base64():
-    """Returns the Sentinel logo as a base64 encoded string"""
+    """Returns the FinAgent logo as a base64 encoded string"""
     # If logo file exists, read it
     try:
         import base64

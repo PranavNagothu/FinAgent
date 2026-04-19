@@ -9,7 +9,7 @@ import re
 import time
 import requests
 import logging
-from typing import TypedDict, Dict, Any
+from typing import TypedDict, Dict, Any, Optional, List
 from datetime import datetime
 from functools import lru_cache
 
@@ -20,12 +20,12 @@ logger = logging.getLogger("ResearchReport")
 # ---------------------------------------------------------------------------
 # SEC EDGAR — Dynamic CIK lookup (supports ALL US public companies)
 # ---------------------------------------------------------------------------
-SEC_HEADERS = {"User-Agent": "SentinelAI research@sentinel-ai.app", "Accept-Encoding": "gzip, deflate"}
+SEC_HEADERS = {"User-Agent": "FinAgentAI research@sentinel-ai.app", "Accept-Encoding": "gzip, deflate"}
 
 _cik_cache: dict = {}  # in-memory cache: ticker -> CIK
 
 
-def _get_cik_for_ticker(ticker: str) -> str | None:
+def _get_cik_for_ticker(ticker: str) -> Optional[str]:
     """Look up CIK number for any US public company ticker via SEC EDGAR."""
     global _cik_cache
     ticker = ticker.upper().strip()

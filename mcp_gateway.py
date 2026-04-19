@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any, Tuple
 # mcp_gateway.py
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse
@@ -27,10 +28,10 @@ except ImportError as e:
     raise
 
 # --- Configuration (Updated for Monolithic Mode) ---
-# Default to internal mounted paths on the same port (8000)
-TAVILY_MCP_URL = os.getenv("TAVILY_MCP_URL", "http://127.0.0.1:8000/tavily/research")
-ALPHAVANTAGE_MCP_URL = os.getenv("ALPHAVANTAGE_MCP_URL", "http://127.0.0.1:8000/alphavantage/market_data")
-PRIVATE_MCP_URL = os.getenv("PRIVATE_MCP_URL", "http://127.0.0.1:8000/private/portfolio_data")
+# Default to internal mounted paths on the same port (8002)
+TAVILY_MCP_URL = os.getenv("TAVILY_MCP_URL", "http://127.0.0.1:8002/tavily/research")
+ALPHAVANTAGE_MCP_URL = os.getenv("ALPHAVANTAGE_MCP_URL", "http://127.0.0.1:8002/alphavantage/market_data")
+PRIVATE_MCP_URL = os.getenv("PRIVATE_MCP_URL", "http://127.0.0.1:8002/private/portfolio_data")
 
 # --- FastAPI App ---
 app = FastAPI(title="Aegis MCP Gateway (Monolith)")
@@ -70,7 +71,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[ChatMessage] = []
+    history: List[ChatMessage] = []
 
 @app.post("/api/chat")
 async def api_chat_orchestrator(request: ChatRequest):
@@ -82,7 +83,7 @@ async def api_chat_orchestrator(request: ChatRequest):
         user_msg = request.message
         
         # 1. Routing Agent: Determine intent
-        routing_prompt = f"""You are Sentinel's routing agent. The user said: "{user_msg}"
+        routing_prompt = f"""You are FinAgent's routing agent. The user said: "{user_msg}"
 Determine if they want a deep research report on a specific stock ticker. 
 If YES, reply ONLY with the stock ticker symbol (e.g. AAPL, TSLA, NVDA).
 If NO (they are just asking a general question or chatting), reply ONLY with the word "CHAT".
@@ -95,7 +96,7 @@ If NO (they are just asking a general question or chatting), reply ONLY with the
             report = generate_report(intent)
             
             # Format the JSON report beautifully into Markdown for the Chat UI
-            reply = f"### 📊 Sentinel Analysis Sequence Complete: **{report.get('_resolved_ticker', intent)}**\n\n"
+            reply = f"### 📊 FinAgent Analysis Sequence Complete: **{report.get('_resolved_ticker', intent)}**\n\n"
             reply += f"**Executive Summary**\n{report.get('executive_summary', '')}\n\n"
             reply += f"***\n**Fundamentals**\n{report.get('fundamentals', '')}\n\n"
             reply += f"***\n**Latest Intelligence**\n{report.get('news', '')}\n\n"
@@ -110,7 +111,7 @@ If NO (they are just asking a general question or chatting), reply ONLY with the
             for msg in request.history[-5:]: # Keep last 5 messages for context
                 chat_context += f"{msg.role.capitalize()}: {msg.content}\n"
             
-            chat_prompt = f"""You are Sentinel, an elite AI financial intelligence operating system.
+            chat_prompt = f"""You are FinAgent, an elite AI financial intelligence operating system.
 You are talking to a user through a sleek, neon 'Generative UI' terminal.
 Keep your responses concise, sharp, and highly technical. Use markdown extensively.
 
@@ -120,7 +121,7 @@ Conversation History:
 User's new message:
 {user_msg}
 """
-            reply = call_gemini(chat_prompt, "You are Sentinel, an elite financial AI.")
+            reply = call_gemini(chat_prompt, "You are FinAgent, an elite financial AI.")
             return {"reply": reply}
 
     except Exception as e:
@@ -183,8 +184,8 @@ async def route_agent_request(request_data: dict):
     url_map = {
         "tavily_research": TAVILY_MCP_URL,
         "alpha_vantage_market_data": ALPHAVANTAGE_MCP_URL,
-        "alpha_vantage_overview": os.getenv("AV_OVERVIEW_URL", "http://127.0.0.1:8000/alphavantage/company_overview"),
-        "alpha_vantage_quote": os.getenv("AV_QUOTE_URL", "http://127.0.0.1:8000/alphavantage/global_quote"),
+        "alpha_vantage_overview": os.getenv("AV_OVERVIEW_URL", "http://127.0.0.1:8002/alphavantage/company_overview"),
+        "alpha_vantage_quote": os.getenv("AV_QUOTE_URL", "http://127.0.0.1:8002/alphavantage/global_quote"),
         "internal_portfolio_data": PRIVATE_MCP_URL,
     }
 
@@ -216,5 +217,6 @@ def read_root():
     return {"message": "Aegis MCP Gateway (Monolithic) is operational."}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8002)
+
     

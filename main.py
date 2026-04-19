@@ -13,7 +13,7 @@ signal.signal(signal.SIGINT, cleanup)
 signal.signal(signal.SIGTERM, cleanup)
 
 def main():
-    print("🚀 Starting Sentinel Monolith...")
+    print("🚀 Starting FinAgent...")
     
     # 1. Start the MCP Gateway (which now includes all microservices)
     # running on port 8000

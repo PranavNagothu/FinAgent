@@ -16,3 +16,7 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+# Secrets - never commit API keys
+.streamlit/secrets.toml
+test_keys.py

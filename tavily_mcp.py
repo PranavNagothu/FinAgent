@@ -35,7 +35,7 @@ else:
 
 # --- FastAPI App & Tavily Client ---
 app = FastAPI(title="Aegis Tavily MCP Server")
-tavily = TavilyClient(api_key=TAVILY_API_KEY)
+tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 @app.post("/research")
 async def perform_research(payload: dict):
@@ -75,39 +75,9 @@ async def perform_research(payload: dict):
         return {"status": "success", "data": all_results}
 
     except Exception as e:
-        logger.error(f"Tavily API Error (likely rate limit): {e}. Switching to MOCK DATA fallback.")
-        # --- FALLBACK MECHANISM ---
-        mock_results = []
-        import random
-        from datetime import datetime
-        
-        # Dynamic market sentiments to rotate through
-        sentiments = ["Bullish", "Bearish", "Neutral", "Volatile", "Cautious"]
-        events = ["Earnings Surprise", "New Product Launch", "Regulatory Update", "Sector Rotation", "Macro Headwinds"]
-        
-        current_time = datetime.now().strftime("%H:%M")
-        
-        for query in queries:
-            # Pick random sentiment and event to diversify the "news"
-            s = random.choice(sentiments)
-            e = random.choice(events)
-            
-            mock_results.append({
-                "query": query,
-                "results": [
-                    {
-                        "title": f"[{current_time}] Market Update: {s} Sentiment for {query}",
-                        "content": f"Live market data at {current_time} indicates a {s} trend for {query}. Analysts are tracking a potential {e} that could impact short-term price action. Volume remains high as traders adjust positions.",
-                        "url": "http://mock-source.com/market-update"
-                    },
-                    {
-                        "title": f"[{current_time}] Sector Alert: {e} affecting {query}",
-                        "content": f"Breaking: A significant {e} is rippling through the sector, heavily influencing {query}. Experts advise monitoring key resistance levels. (Simulated Real-Time Data)",
-                        "url": "http://mock-source.com/sector-alert"
-                    }
-                ]
-            })
-        return {"status": "success", "data": mock_results}
+        logger.error(f"Tavily API Error: {e}")
+        raise HTTPException(status_code=502, detail=f"Tavily search failed: {str(e)}")
+
 
 @app.get("/")
 def read_root():

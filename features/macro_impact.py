@@ -1,3 +1,4 @@
+from typing import Optional, List, Dict, Any, Tuple
 """
 features/macro_impact.py — Macro Event Impact Analyzer
 How upcoming economic events (Fed, CPI, GDP, Jobs) will impact your watchlist.
@@ -69,7 +70,7 @@ TICKER_SECTOR = {
 # ---------------------------------------------------------------------------
 # Event calendar fetching
 # ---------------------------------------------------------------------------
-def _fetch_economic_calendar() -> list[dict]:
+def _fetch_economic_calendar() -> List[dict]:
     """Fetch upcoming economic events via Tavily search."""
     from features.utils import run_tavily_search, call_gemini
 

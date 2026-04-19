@@ -1,10 +1,11 @@
+from typing import Optional, List, Dict, Any, Tuple
 # agents/tool_calling_agents.py (Corrected with longer timeout)
 import httpx
 import logging
 
 # --- Configuration ---
 import os
-MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "http://127.0.0.1:8000/route_agent_request")
+MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "http://127.0.0.1:8002/route_agent_request")
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -34,7 +35,7 @@ class BaseAgent:
 
 class WebResearchAgent(BaseAgent):
     """An agent specialized in performing web research using Tavily."""
-    def research(self, queries: list[str], search_depth: str = "basic") -> dict:
+    def research(self, queries: List[str], search_depth: str = "basic") -> dict:
         payload = { "queries": queries, "search_depth": search_depth }
         return self.call_mcp_gateway("tavily_research", payload)
 

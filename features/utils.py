@@ -1,5 +1,6 @@
+from typing import Optional, List, Dict, Any, Tuple
 """
-features/utils.py — Shared utilities for all Sentinel add-on features.
+features/utils.py — Shared utilities for all FinAgent add-on features.
 Wraps existing MCP gateway calls, Gemini client, and PDF export.
 """
 import os
@@ -12,16 +13,30 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
-logger = logging.getLogger("SentinelFeatures")
+logger = logging.getLogger("FinAgentFeatures")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "http://127.0.0.1:8000/route_agent_request")
+MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "http://127.0.0.1:8002/route_agent_request")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 AV_RATE_LIMIT_DELAY = 12  # seconds between Alpha Vantage calls (free tier)
 
 _last_av_call = 0.0  # module-level timestamp for rate-limiting
+
+# Load all LLM keys from secrets.toml if not in env
+def _load_secrets():
+    try:
+        import toml as _toml
+        _sp = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
+        if os.path.exists(_sp):
+            return _toml.load(_sp)
+    except Exception:
+        pass
+    return {}
+
+_secrets = _load_secrets()
+def _get_key(name): return os.getenv(name, "") or _secrets.get(name, "")
 
 
 # ---------------------------------------------------------------------------
@@ -93,13 +108,12 @@ def fetch_global_quote(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 # Gemini LLM helper (with automatic model fallback for rate limits)
 # ---------------------------------------------------------------------------
-# Ordered fallback chain: each model has its own 20 req/day free-tier limit
+# Ordered fallback chain — tries newest/most capable first
 _GEMINI_MODELS = [
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
-    "gemini-1.5-flash-8b"
+    "gemini-1.5-flash-8b",
 ]
 
 def get_gemini_llm(temperature: float = 0.0, model: str = None):
@@ -117,7 +131,7 @@ def get_gemini_llm(temperature: float = 0.0, model: str = None):
 
 
 def call_gemini(prompt: str, system_prompt: str = "") -> str:
-    """One-shot Gemini call with automatic model fallback on rate limits."""
+    """LLM call with Groq-first strategy and Gemini fallback."""
     from langchain_core.messages import SystemMessage, HumanMessage
     import time as _time
 
@@ -127,6 +141,69 @@ def call_gemini(prompt: str, system_prompt: str = "") -> str:
     else:
         messages = [HumanMessage(content=prompt)]
 
+    # --- Load Groq key from secrets.toml or env ---
+    groq_api_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_api_key:
+        try:
+            import toml as _toml
+            _sp = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
+            if os.path.exists(_sp):
+                groq_api_key = _toml.load(_sp).get("GROQ_API_KEY", "")
+        except Exception:
+            pass
+
+    # --- Try Groq FIRST (most reliable free tier) ---
+    groq_api_key = _get_key("GROQ_API_KEY")
+    if groq_api_key:
+        try:
+            from langchain_groq import ChatGroq
+            groq_llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=groq_api_key, temperature=0.0, max_retries=2)
+            result = groq_llm.invoke(messages).content.strip()
+            logger.info("Groq (Llama-3 70B) responded successfully.")
+            return result
+        except Exception as e:
+            logger.warning(f"Groq failed: {e}. Trying next...")
+
+    # --- Try OpenRouter (free models: Gemma, Mistral, Qwen) ---
+    openrouter_key = _get_key("OPENROUTER_API_KEY")
+    if openrouter_key:
+        _or_models = [
+            "google/gemma-3-12b-it:free",
+            "mistralai/mistral-7b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "qwen/qwen-2.5-7b-instruct:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+        ]
+        for or_model in _or_models:
+            try:
+                from langchain_openai import ChatOpenAI
+                or_llm = ChatOpenAI(model=or_model, api_key=openrouter_key, base_url="https://openrouter.ai/api/v1", temperature=0.0, max_retries=1)
+                result = or_llm.invoke(messages).content.strip()
+                logger.info(f"OpenRouter ({or_model}) responded successfully.")
+                return result
+            except Exception as e:
+                logger.warning(f"OpenRouter {or_model} failed: {str(e)[:60]}")
+                continue
+
+    # --- Try Mistral AI ---
+    mistral_key = _get_key("MISTRAL_API_KEY")
+    if mistral_key:
+        try:
+            from langchain_openai import ChatOpenAI
+            mistral_llm = ChatOpenAI(
+                model="mistral-small-latest",
+                api_key=mistral_key,
+                base_url="https://api.mistral.ai/v1",
+                temperature=0.0,
+                max_retries=2,
+            )
+            result = mistral_llm.invoke(messages).content.strip()
+            logger.info("Mistral AI responded successfully.")
+            return result
+        except Exception as e:
+            logger.warning(f"Mistral failed: {e}. Trying Gemini models...")
+
+    # --- Gemini fallback chain ---
     last_error = None
     for model_name in _GEMINI_MODELS:
         try:
@@ -137,39 +214,45 @@ def call_gemini(prompt: str, system_prompt: str = "") -> str:
             error_str = str(e)
             last_error = e
             if "429" in error_str or "quota" in error_str.lower() or "rate" in error_str.lower() or "404" in error_str:
-                logger.warning(f"Model {model_name} failed ({error_str[:50]}), trying next Gemini model...")
-                _time.sleep(2)  # Brief pause before trying next model
+                logger.warning(f"Gemini {model_name} rate-limited, trying next...")
+                _time.sleep(2)
                 continue
             else:
-                logger.warning(f"Model {model_name} failed with non-rate-limit error: {error_str[:50]}")
-                continue  # Keep trying other Gemini models just in case
+                logger.warning(f"Gemini {model_name} error: {error_str[:60]}")
+                continue
 
-    # All Gemini models exhausted. Try Groq/Llama fallback if available.
-    import os
-    from dotenv import load_dotenv
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-    load_dotenv(dotenv_path=env_path, override=True)
-    
-    groq_api_key = os.getenv("GROQ_API_KEY")
+    # All Gemini models exhausted — try Groq (Llama-3) as fallback
+    # Load from Streamlit secrets OR .env file
+    groq_api_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_api_key:
+        try:
+            import toml as _toml
+            _secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
+            if os.path.exists(_secrets_path):
+                _secrets = _toml.load(_secrets_path)
+                groq_api_key = _secrets.get("GROQ_API_KEY", "")
+        except Exception:
+            pass
+
     if groq_api_key:
-        logger.info("All Gemini models failed. Falling back to Groq (Llama 3 70B)...")
+        logger.info("All Gemini models rate-limited. Falling back to Groq (Llama-3 70B)...")
         try:
             from langchain_groq import ChatGroq
             groq_llm = ChatGroq(
-                model="llama-3.3-70b-versatile", 
-                api_key=groq_api_key, 
+                model="llama-3.3-70b-versatile",
+                api_key=groq_api_key,
                 temperature=0.0,
                 max_retries=2
             )
             result = groq_llm.invoke(messages).content.strip()
+            logger.info("Groq fallback succeeded.")
             return result
         except ImportError:
-            logger.error("langchain_groq not installed. Cannot use Groq fallback.")
+            logger.error("langchain_groq not installed.")
         except Exception as e:
             logger.error(f"Groq fallback also failed: {e}")
-            raise last_error
-            
-    # All models exhausted and no fallback available
+
+    # All models exhausted
     raise last_error
 
 
@@ -211,7 +294,7 @@ def _sanitize_for_pdf(text: str) -> str:
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
-def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
+def export_to_pdf(sections: List[dict], filename: str = "report.pdf") -> bytes:
     """Generate a professional, Wall Street-grade PDF report with logo and styling.
 
     Each section dict:  {"title": "...", "body": "..."}
@@ -230,7 +313,7 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
     SECTION_BG = (240, 242, 248)
 
     # --- Custom PDF class with header/footer ---
-    class SentinelPDF(FPDF):
+    class FinAgentPDF(FPDF):
         def __init__(self):
             super().__init__()
             self.logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "sentinel_logo.png")
@@ -245,7 +328,7 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
             self.set_font("Times", "B", 9)
             self.set_text_color(*NAVY)
             self.set_xy(24, 8)
-            self.cell(0, 5, "SENTINEL AI", align="L")
+            self.cell(0, 5, "FINAGENT", align="L")
             self.set_font("Times", "", 7)
             self.set_text_color(*MID_GRAY)
             self.set_xy(24, 13)
@@ -269,11 +352,11 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
             self.ln(2)
             self.set_font("Times", "", 7)
             self.set_text_color(*MID_GRAY)
-            self.cell(0, 5, "Generated by Sentinel AI | For Authorized Use Only", align="L")
+            self.cell(0, 5, "Generated by FinAgent | For Authorized Use Only", align="L")
             self.set_font("Times", "B", 7)
             self.cell(0, 5, f"Page {self.page_no()}", align="R")
 
-    pdf = SentinelPDF()
+    pdf = FinAgentPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
 
     # ===== TITLE PAGE =====
@@ -288,7 +371,7 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
     # Title
     pdf.set_font("Times", "B", 28)
     pdf.set_text_color(*NAVY)
-    pdf.cell(0, 14, _sanitize_for_pdf("SENTINEL AI"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 14, _sanitize_for_pdf("FINAGENT"), new_x="LMARGIN", new_y="NEXT", align="C")
 
     pdf.set_font("Times", "", 12)
     pdf.set_text_color(*GOLD)
@@ -326,7 +409,7 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
     pdf.set_text_color(*MID_GRAY)
     pdf.set_xy(25, pdf.get_y() + 3)
     pdf.multi_cell(pdf.w - 50, 4,
-        _sanitize_for_pdf("This report is generated by Sentinel AI using real-time market data from Alpha Vantage, "
+        _sanitize_for_pdf("This report is generated by FinAgent using real-time market data from Alpha Vantage, "
         "SEC EDGAR filings, and AI-powered analysis. It is for informational purposes only and does not "
         "constitute financial advice. Past performance is not indicative of future results."))
 
@@ -494,7 +577,7 @@ def export_to_pdf(sections: list[dict], filename: str = "report.pdf") -> bytes:
 # ---------------------------------------------------------------------------
 WATCHLIST_FILE = "watchlist.json"
 
-def load_watchlist() -> list[str]:
+def load_watchlist() -> List[str]:
     if not os.path.exists(WATCHLIST_FILE):
         return []
     try:
